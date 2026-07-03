@@ -1,0 +1,12 @@
+{
+  "name": "good-job",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "npm run start:dev -w @goodjob/api",
+    "dev:web": "npm run dev -w @goodjob/web"
+  }
+}
