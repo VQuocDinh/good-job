@@ -1,0 +1,6 @@
+      PID    PPID    PGID     WINPID   TTY         UID    STIME COMMAND
+     1564    1561    1561      21520  cons0     197609 17:42:46 /c/Program Files/Docker/Docker/resources/bin/docker
+     1222       1    1222      15400  cons0     197609 09:53:06 /usr/bin/bash
+     1910    1778    1910      14420  cons1     197609 18:47:50 /usr/bin/PS
+     1778       1    1778       9428  cons1     197609 18:44:35 /usr/bin/bash
+     1561    1222    1561      15100  cons0     197609 17:42:46 /usr/bin/sh
