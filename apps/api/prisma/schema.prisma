@@ -1,0 +1,122 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String
+  createdAt DateTime @default(now())
+
+  sentKudos     Kudo[]         @relation("Sender")
+  receivedKudos Kudo[]         @relation("Receiver")
+  budgets       GivingBudget[]
+  ledger        PointLedger[]
+  redemptions   Redemption[]
+  notifications Notification[]
+}
+
+// Budgets by month - row for update prevent exceeding 200
+model GivingBudget {
+  id        String @id @default(uuid())
+  userId    String
+  yearMonth String  // "2026-07"
+  allocated Int     @default(200)
+  spent     Int     @default(0)
+  user      User    @relation(fields: [userId], references: [id])
+
+  @@unique([userId, yearMonth])
+}
+
+model Kudo {
+  id          String   @id @default(uuid())
+  senderId    String
+  receiverId  String
+  points      Int      // 10..50
+  description String
+  coreValue   String   // #Teamwork, #Ownership...
+  createdAt   DateTime @default(now())
+
+  sender   User        @relation("Sender", fields: [senderId], references: [id])
+  receiver User        @relation("Receiver", fields: [receiverId], references: [id])
+  media    KudoMedia[]
+  reactions Reaction[]
+  comments  Comment[]
+}
+
+model KudoMedia {
+  id     String   @id @default(uuid())
+  kudoId String
+  url    String
+  type   String   // image | video
+  status String   @default("processing") // processing | ready | failed
+  kudo   Kudo     @relation(fields: [kudoId], references: [id])
+}
+
+model Reaction {
+  id     String @id @default(uuid())
+  kudoId String
+  userId String
+  emoji  String
+  kudo   Kudo   @relation(fields: [kudoId], references: [id])
+  @@unique([kudoId, userId, emoji])
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  kudoId    String
+  userId    String
+  text      String?
+  mediaUrl  String?   // comment support media (image/video)
+  createdAt DateTime @default(now())
+  kudo      Kudo     @relation(fields: [kudoId], references: [id])
+}
+
+// Users who are tagged in feeds can receive
+// real-time notifications
+model Notification {
+  id        String    @id @default(uuid())
+  userId    String    
+  type      String    // TAGGED | KUDO_RECEIVED | COMMENT | REACTION
+  payload   Json      // { kudoId, actorId, snippet... }
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+}
+
+model Reward {
+  id       String @id @default(uuid())
+  name     String
+  cost     Int
+  active   Boolean @default(true)
+  redemptions Redemption[]
+}
+
+model Redemption {
+  id             String   @id @default(uuid())
+  userId         String
+  rewardId       String
+  cost           Int
+  idempotencyKey String   @unique   // prevent double-spend
+  createdAt      DateTime @default(now())
+  user   User   @relation(fields: [userId], references: [id])
+  reward Reward @relation(fields: [rewardId], references: [id])
+}
+
+// Source of truth for all point fluctuations — audit trail invariant
+model PointLedger {
+  id          String   @id @default(uuid())
+  userId      String
+  delta       Int      // + receive, - pay
+  type        String   // KUDO_RECEIVED | REDEMPTION | ...
+  referenceId String?  // id Kudo / Redemption
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+}
