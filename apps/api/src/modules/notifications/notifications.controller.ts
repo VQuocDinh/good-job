@@ -2,7 +2,6 @@ import {
   Controller,
   Get,
   Param,
-  ParseUUIDPipe,
   Patch,
   UseGuards,
 } from '@nestjs/common';
@@ -24,7 +23,7 @@ export class NotificationsController {
   @Patch(':id/read')
   markRead(
     @CurrentUser() user: JwtPayload,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id') id: string,
   ) {
     return this.notifications.markRead(user.sub, id);
   }

@@ -6,7 +6,6 @@ import {
   Get,
   Headers,
   Param,
-  ParseUUIDPipe,
   Patch,
   Post,
   UseGuards,
@@ -38,7 +37,7 @@ export class RewardsController {
   @Patch(':id')
   @UseGuards(AdminGuard)
   update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id') id: string,
     @Body() dto: UpdateRewardDto,
   ) {
     return this.rewards.update(id, dto);
@@ -46,14 +45,14 @@ export class RewardsController {
 
   @Delete(':id')
   @UseGuards(AdminGuard)
-  remove(@Param('id', ParseUUIDPipe) id: string) {
+  remove(@Param('id') id: string) {
     return this.rewards.softDelete(id);
   }
 
   @Post(':id/redeem')
   redeem(
     @CurrentUser() user: JwtPayload,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id') id: string,
     @Headers('idempotency-key') idempotencyKey?: string,
   ) {
     if (!idempotencyKey) {

@@ -4,7 +4,6 @@ import {
   Delete,
   Get,
   Param,
-  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -38,7 +37,7 @@ export class KudosController {
   @Patch(':id')
   update(
     @CurrentUser() user: JwtPayload,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id') id: string,
     @Body() dto: UpdateKudoDto,
   ) {
     return this.kudos.updateKudo(user.sub, id, dto);
@@ -47,7 +46,7 @@ export class KudosController {
   @Delete(':id')
   remove(
     @CurrentUser() user: JwtPayload,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id') id: string,
   ) {
     return this.kudos.deleteKudo(user.sub, id);
   }
@@ -55,7 +54,7 @@ export class KudosController {
   @Post(':id/reactions')
   react(
     @CurrentUser() user: JwtPayload,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id') id: string,
     @Body() dto: CreateReactionDto,
   ) {
     return this.kudos.addReaction(user.sub, id, dto.emoji);
@@ -64,7 +63,7 @@ export class KudosController {
   @Post(':id/comments')
   comment(
     @CurrentUser() user: JwtPayload,
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id') id: string,
     @Body() dto: CreateCommentDto,
   ) {
     return this.kudos.addComment(user.sub, id, dto);
