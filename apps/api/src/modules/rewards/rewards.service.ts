@@ -10,6 +10,8 @@ import Redis from 'ioredis';
 import { LedgerType } from '../../common/constants/ledger';
 import { PrismaService } from '../../prisma/prisma.service';
 import { REDIS_CLIENT } from '../../redis/redis.constants';
+import { CreateRewardDto } from './dto/create-reward.dto';
+import { UpdateRewardDto } from './dto/update-reward.dto';
 
 @Injectable()
 export class RewardsService {
@@ -92,5 +94,39 @@ export class RewardsService {
       }
       throw e;
     }
+  }
+
+  /** Catalog for members: active rewards only. */
+  list() {
+    return this.prisma.reward.findMany({
+      where: { active: true },
+      orderBy: { cost: 'asc' },
+    });
+  }
+
+  create(dto: CreateRewardDto) {
+    return this.prisma.reward.create({
+      data: { name: dto.name, cost: dto.cost },
+    });
+  }
+
+  async update(id: string, dto: UpdateRewardDto) {
+    // findUnique first for a clean 404 (P2025 would also be caught globally)
+    const reward = await this.prisma.reward.findUnique({ where: { id } });
+    if (!reward) throw new NotFoundException('Reward not found');
+    return this.prisma.reward.update({
+      where: { id },
+      data: { name: dto.name, cost: dto.cost, active: dto.active },
+    });
+  }
+
+  /** Soft delete: hide from the catalog, keep redemption history intact. */
+  async softDelete(id: string) {
+    const reward = await this.prisma.reward.findUnique({ where: { id } });
+    if (!reward) throw new NotFoundException('Reward not found');
+    return this.prisma.reward.update({
+      where: { id },
+      data: { active: false },
+    });
   }
 }
