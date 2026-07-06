@@ -4,5 +4,6 @@ dist/
 .env.local
 *.log
 coverage/
+coverage-e2e/
 uploads/
-.DS_Storecoverage-e2e/
+.DS_Store
