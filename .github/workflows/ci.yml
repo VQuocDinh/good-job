@@ -1,0 +1,54 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      # required — migrate/tests fail in CI without these
+      DATABASE_URL: postgresql://goodjob:goodjob@localhost:5432/goodjob
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-test-secret
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: goodjob
+          POSTGRES_PASSWORD: goodjob
+          POSTGRES_DB: goodjob
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U goodjob" --health-interval 5s
+          --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s
+          --health-timeout 5s --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # prisma runs inside the api workspace (npx does not take -w)
+      - run: npm exec -w @goodjob/api -- prisma generate
+      - run: npm exec -w @goodjob/api -- prisma migrate deploy
+
+      - name: Unit tests
+        run: npm test -w @goodjob/api
+
+      - name: E2E tests (concurrency + integrity)
+        run: npm run test:e2e -w @goodjob/api
+
+      - name: Build API
+        run: npm run build -w @goodjob/api
+
+      - name: Build Web
+        run: npm run build -w @goodjob/web
