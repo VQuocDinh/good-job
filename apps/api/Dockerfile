@@ -5,10 +5,13 @@ WORKDIR /repo
 # prisma engines need openssl on alpine
 RUN apk add --no-cache openssl
 
-# install with the workspace-aware lockfile (cache-friendly layer order)
+# install with the workspace-aware lockfile (cache-friendly layer order);
+# the schema must be present BEFORE npm ci: the api postinstall hook runs
+# `prisma generate`
 COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
+COPY apps/api/prisma apps/api/prisma
 RUN npm ci -w @goodjob/api --include-workspace-root=false
 
 COPY apps/api apps/api
@@ -29,7 +32,12 @@ RUN apk add --no-cache openssl
 COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
-RUN npm ci -w @goodjob/api --omit=dev --include-workspace-root=false
+# --ignore-scripts: the api postinstall needs the prisma CLI, which is a
+# devDependency and absent here — the generated client is copied from the
+# build stage instead. ffprobe-static downloads its binary in an install
+# script, so re-run just that one.
+RUN npm ci -w @goodjob/api --omit=dev --include-workspace-root=false --ignore-scripts \
+  && npm rebuild ffprobe-static
 
 # generated prisma client + CLI + engines come from the build stage so the
 # production image never downloads engines at runtime
