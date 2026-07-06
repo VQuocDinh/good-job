@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { api, errorMessage } from '../lib/api';
+import { api, assetUrl, errorMessage } from '../lib/api';
 import type { Kudo } from '../lib/types';
 import { useAuthStore } from '../store/auth';
 import { useUiStore } from '../store/ui';
@@ -90,14 +90,14 @@ export function KudoCard({ kudo }: { kudo: Kudo }) {
             ) : m.type === 'video' ? (
               <video
                 key={m.id}
-                src={m.url}
+                src={assetUrl(m.url)}
                 controls
                 className="max-h-64 rounded-lg"
               />
             ) : (
               <img
                 key={m.id}
-                src={m.url}
+                src={assetUrl(m.url)}
                 alt=""
                 className="max-h-64 rounded-lg object-cover"
               />

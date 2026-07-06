@@ -1,12 +1,26 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import helmet from 'helmet';
+import { resolve } from 'node:path';
 import { AppModule } from './app.module';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   app.enableCors({ origin: true });
+  app.use(
+    helmet({
+      // uploads are consumed by the web app on another origin
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    }),
+  );
+
+  // uploaded media is served statically; files land here via multer diskStorage
+  app.useStaticAssets(resolve(process.env.UPLOAD_DIR ?? './uploads'), {
+    prefix: '/uploads/',
+  });
 
   app.useGlobalPipes(
     new ValidationPipe({

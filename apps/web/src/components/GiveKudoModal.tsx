@@ -25,6 +25,7 @@ export function GiveKudoModal() {
   const [points, setPoints] = useState(20);
   const [description, setDescription] = useState('');
   const [coreValue, setCoreValue] = useState(CORE_VALUES[0]);
+  const [file, setFile] = useState<File | null>(null);
 
   const users = useQuery({
     queryKey: ['users'],
@@ -33,8 +34,17 @@ export function GiveKudoModal() {
   });
 
   const give = useMutation({
-    mutationFn: async (input: GiveKudoInput) =>
-      (await api.post<Kudo>('/kudos', input)).data,
+    mutationFn: async (input: GiveKudoInput) => {
+      const kudo = (await api.post<Kudo>('/kudos', input)).data;
+      if (file) {
+        // video: API answers immediately with status=processing, a BullMQ
+        // worker validates it async and the feed updates over websocket
+        const form = new FormData();
+        form.append('file', file);
+        await api.post(`/kudos/${kudo.id}/media`, form);
+      }
+      return kudo;
+    },
     // optimistic update: prepend a temporary kudo to the first feed page
     onMutate: async (input) => {
       await queryClient.cancelQueries({ queryKey: ['feed'] });
@@ -77,10 +87,15 @@ export function GiveKudoModal() {
       pushToast(errorMessage(e), 'error');
     },
     onSuccess: () => {
-      pushToast('Kudos sent! 👏');
+      pushToast(
+        file?.type.startsWith('video/')
+          ? 'Kudos sent! Video is processing… 🎬'
+          : 'Kudos sent! 👏',
+      );
       setOpen(false);
       setDescription('');
       setPoints(20);
+      setFile(null);
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['feed'] });
@@ -164,6 +179,16 @@ export function GiveKudoModal() {
             rows={3}
             placeholder="What did they do that was awesome?"
             className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+          />
+        </label>
+
+        <label className="mt-4 block text-sm font-medium text-slate-700">
+          Photo / video (optional, video ≤ 3 min)
+          <input
+            type="file"
+            accept="image/*,video/*"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            className="mt-1 block w-full text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-slate-700 hover:file:bg-slate-200"
           />
         </label>
 
