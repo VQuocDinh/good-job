@@ -162,6 +162,16 @@ export class KudosService {
       .$executeRaw`UPDATE "Kudo" SET "embedding" = ${`[${vector.join(',')}]`}::vector WHERE "id" = ${kudoId}`;
   }
 
+  // Relevance cutoffs for semantic search, calibrated on gemini-embedding-001
+  // (768 dims) cosine distances: real matches land ≤ ~0.43 while unrelated
+  // kudos hover around ~0.44–0.57. Without a cutoff, ORDER BY ... LIMIT n
+  // merely RANKS — every query would return the n nearest kudos no matter
+  // how unrelated.
+  private static readonly SEARCH_MAX_DISTANCE = 0.43;
+  // Also drop results that trail far behind the best hit: garbage/very short
+  // descriptions embed "near everything" and would ride along otherwise.
+  private static readonly SEARCH_MAX_GAP = 0.025;
+
   /**
    * Semantic search over kudo descriptions (pgvector cosine distance).
    * Falls back to plain ILIKE keyword match when AI is not configured.
@@ -170,13 +180,23 @@ export class KudosService {
     const vector = await this.embeddings.embed(q);
     let ids: string[];
     if (vector) {
-      const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
-        SELECT "id" FROM "Kudo"
+      const rows = await this.prisma.$queryRaw<
+        Array<{ id: string; dist: number }>
+      >`
+        SELECT "id", ("embedding" <=> ${`[${vector.join(',')}]`}::vector)::float AS dist
+        FROM "Kudo"
         WHERE "embedding" IS NOT NULL
-        ORDER BY "embedding" <=> ${`[${vector.join(',')}]`}::vector
+        ORDER BY dist
         LIMIT ${limit}
       `;
-      ids = rows.map((r) => r.id);
+      const best = rows[0]?.dist ?? Infinity;
+      ids = rows
+        .filter(
+          (r) =>
+            r.dist <= KudosService.SEARCH_MAX_DISTANCE &&
+            r.dist <= best + KudosService.SEARCH_MAX_GAP,
+        )
+        .map((r) => r.id);
     } else {
       const rows = await this.prisma.kudo.findMany({
         where: {

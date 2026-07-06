@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-const EMBED_MODEL = 'text-embedding-004'; // 768 dims — matches vector(768)
+// text-embedding-004 is retired for new API keys; gemini-embedding-001
+// defaults to 3072 dims, so request 768 to match the vector(768) column
+const EMBED_MODEL = 'gemini-embedding-001';
+const EMBED_DIMS = 768;
 const CHAT_MODEL = 'gemini-2.0-flash';
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
@@ -32,6 +35,7 @@ export class EmbeddingsService {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             content: { parts: [{ text }] },
+            outputDimensionality: EMBED_DIMS,
           }),
         },
       );
