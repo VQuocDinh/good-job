@@ -1,9 +1,14 @@
 import axios from 'axios';
 import { useAuthStore } from '../store/auth';
 
-export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL ?? 'http://localhost:3000',
-});
+export const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
+
+export const api = axios.create({ baseURL: API_URL });
+
+/** Uploaded media is stored as a relative path (/uploads/...) on the API. */
+export function assetUrl(url: string): string {
+  return url.startsWith('/') ? `${API_URL}${url}` : url;
+}
 
 api.interceptors.request.use((config) => {
   const token = useAuthStore.getState().token;

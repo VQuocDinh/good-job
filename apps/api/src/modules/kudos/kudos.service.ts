@@ -4,16 +4,40 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { currentYearMonth } from '../../common/utils/year-month';
+import { extractMentionTokens } from '../../common/utils/mentions';
 import { LedgerType } from '../../common/constants/ledger';
 import { PrismaService } from '../../prisma/prisma.service';
+import { EmbeddingsService } from '../ai/embeddings.service';
+import {
+  NotificationInput,
+  NotificationPublisher,
+} from '../notifications/notification-publisher.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { GiveKudoDto } from './dto/give-kudo.dto';
 import { UpdateKudoDto } from './dto/update-kudo.dto';
 
 @Injectable()
 export class KudosService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationPublisher,
+    private readonly embeddings: EmbeddingsService,
+  ) {}
+
+  /** Resolves "@alice" tokens to users by email local part. */
+  private async findMentionedUsers(
+    tx: Prisma.TransactionClient,
+    text: string,
+  ) {
+    const tokens = extractMentionTokens(text);
+    if (tokens.length === 0) return [];
+    return tx.user.findMany({
+      where: { OR: tokens.map((t) => ({ email: { startsWith: `${t}@` } })) },
+      select: { id: true, name: true },
+    });
+  }
 
   /**
    * Gives kudos atomically:
@@ -32,7 +56,7 @@ export class KudosService {
 
     const ym = currentYearMonth();
 
-    return this.prisma.$transaction(async (tx) => {
+    const { kudo, notifs } = await this.prisma.$transaction(async (tx) => {
       const receiver = await tx.user.findUnique({
         where: { id: dto.receiverId },
         select: { id: true },
@@ -40,6 +64,10 @@ export class KudosService {
       if (!receiver) {
         throw new NotFoundException('Receiver not found');
       }
+      const sender = await tx.user.findUniqueOrThrow({
+        where: { id: senderId },
+        select: { name: true },
+      });
 
       // Ensure the budget row exists for this month (implicit monthly reset:
       // a fresh row per (userId, yearMonth) starts at spent=0).
@@ -89,8 +117,96 @@ export class KudosService {
         },
       });
 
-      return kudo;
+      // notifications: receiver + everyone @mentioned in the description
+      const inputs: NotificationInput[] = [
+        {
+          userId: dto.receiverId,
+          type: 'KUDO_RECEIVED',
+          payload: {
+            message: `${sender.name} sent you ${dto.points} points: "${dto.description.slice(0, 80)}"`,
+            kudoId: kudo.id,
+            actorId: senderId,
+          },
+        },
+      ];
+      const mentioned = await this.findMentionedUsers(tx, dto.description);
+      for (const user of mentioned) {
+        if (user.id === senderId || user.id === dto.receiverId) continue;
+        inputs.push({
+          userId: user.id,
+          type: 'TAGGED',
+          payload: {
+            message: `${sender.name} tagged you in a kudo`,
+            kudoId: kudo.id,
+            actorId: senderId,
+          },
+        });
+      }
+      await this.notifications.createMany(tx, inputs);
+
+      return { kudo, notifs: inputs };
     });
+
+    // publish only after commit: sockets must never see uncommitted rows
+    await this.notifications.publish(notifs);
+    // fire-and-forget: embedding powers search only, must not delay the give
+    void this.storeEmbedding(kudo.id, dto.description);
+    return kudo;
+  }
+
+  /** Embed the description and store it for semantic search (best effort). */
+  private async storeEmbedding(kudoId: string, description: string) {
+    const vector = await this.embeddings.embed(description);
+    if (!vector) return;
+    await this.prisma
+      .$executeRaw`UPDATE "Kudo" SET "embedding" = ${`[${vector.join(',')}]`}::vector WHERE "id" = ${kudoId}`;
+  }
+
+  /**
+   * Semantic search over kudo descriptions (pgvector cosine distance).
+   * Falls back to plain ILIKE keyword match when AI is not configured.
+   */
+  async search(q: string, limit: number) {
+    const vector = await this.embeddings.embed(q);
+    let ids: string[];
+    if (vector) {
+      const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT "id" FROM "Kudo"
+        WHERE "embedding" IS NOT NULL
+        ORDER BY "embedding" <=> ${`[${vector.join(',')}]`}::vector
+        LIMIT ${limit}
+      `;
+      ids = rows.map((r) => r.id);
+    } else {
+      const rows = await this.prisma.kudo.findMany({
+        where: {
+          OR: [
+            { description: { contains: q, mode: 'insensitive' } },
+            { coreValue: { contains: q, mode: 'insensitive' } },
+          ],
+        },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        select: { id: true },
+      });
+      ids = rows.map((r) => r.id);
+    }
+
+    if (ids.length === 0) return { items: [], semantic: !!vector };
+    const items = await this.prisma.kudo.findMany({
+      where: { id: { in: ids } },
+      include: {
+        sender: { select: { id: true, name: true } },
+        receiver: { select: { id: true, name: true } },
+        media: true,
+        reactions: true,
+        comments: { orderBy: { createdAt: 'asc' } },
+      },
+    });
+    // findMany does not preserve the similarity ranking — restore it
+    const order = new Map(ids.map((id, i) => [id, i]));
+    items.sort((a, b) => order.get(a.id)! - order.get(b.id)!);
+    return { items, semantic: !!vector };
   }
 
   /**
@@ -188,13 +304,51 @@ export class KudosService {
     if (!dto.text && !dto.mediaUrl) {
       throw new BadRequestException('Comment needs text or media');
     }
-    const kudo = await this.prisma.kudo.findUnique({
-      where: { id: kudoId },
-      select: { id: true },
+
+    const { comment, notifs } = await this.prisma.$transaction(async (tx) => {
+      const kudo = await tx.kudo.findUnique({
+        where: { id: kudoId },
+        select: { id: true, senderId: true, receiverId: true },
+      });
+      if (!kudo) throw new NotFoundException('Kudo not found');
+      const author = await tx.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: { name: true },
+      });
+
+      const comment = await tx.comment.create({
+        data: { kudoId, userId, text: dto.text, mediaUrl: dto.mediaUrl },
+      });
+
+      // notify kudo participants + @mentions (never the author themselves)
+      const targets = new Map<string, NotificationInput['type']>();
+      for (const participant of [kudo.senderId, kudo.receiverId]) {
+        if (participant !== userId) targets.set(participant, 'COMMENT');
+      }
+      const mentioned = await this.findMentionedUsers(tx, dto.text ?? '');
+      for (const user of mentioned) {
+        if (user.id !== userId) targets.set(user.id, 'TAGGED');
+      }
+      const inputs: NotificationInput[] = [...targets].map(
+        ([targetId, type]) => ({
+          userId: targetId,
+          type,
+          payload: {
+            message:
+              type === 'TAGGED'
+                ? `${author.name} tagged you in a comment`
+                : `${author.name} commented on your kudo`,
+            kudoId,
+            actorId: userId,
+          },
+        }),
+      );
+      await this.notifications.createMany(tx, inputs);
+
+      return { comment, notifs: inputs };
     });
-    if (!kudo) throw new NotFoundException('Kudo not found');
-    return this.prisma.comment.create({
-      data: { kudoId, userId, text: dto.text, mediaUrl: dto.mediaUrl },
-    });
+
+    await this.notifications.publish(notifs);
+    return comment;
   }
 }
