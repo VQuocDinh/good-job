@@ -1,10 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { currentYearMonth } from '../../common/utils/year-month';
 import { PrismaService } from '../../prisma/prisma.service';
+import { EmbeddingsService } from '../ai/embeddings.service';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly ai: EmbeddingsService,
+  ) {}
 
   /** Directory of users (for the give-kudo receiver picker). */
   list() {
@@ -32,5 +36,54 @@ export class UsersService {
       _sum: { delta: true },
     });
     return { balance: result._sum.delta ?? 0 };
+  }
+
+  /**
+   * AI summary of this month's received recognition. Falls back to a
+   * deterministic stats summary when Gemini is not configured.
+   */
+  async getMonthlySummary(userId: string) {
+    const now = new Date();
+    const monthStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+    );
+    const kudos = await this.prisma.kudo.findMany({
+      where: { receiverId: userId, createdAt: { gte: monthStart } },
+      select: {
+        points: true,
+        description: true,
+        coreValue: true,
+        sender: { select: { name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (kudos.length === 0) {
+      return { summary: 'No kudos received this month yet.', ai: false };
+    }
+
+    const totalPoints = kudos.reduce((sum, k) => sum + k.points, 0);
+    const byValue = new Map<string, number>();
+    for (const k of kudos) {
+      byValue.set(k.coreValue, (byValue.get(k.coreValue) ?? 0) + 1);
+    }
+    const topValue = [...byValue.entries()].sort((a, b) => b[1] - a[1])[0][0];
+
+    const aiSummary = await this.ai.generateText(
+      `Summarize this employee's recognition for the month in 2-3 friendly sentences (second person, no preamble). ` +
+        `They received ${kudos.length} kudos totalling ${totalPoints} points. Kudos:\n` +
+        kudos
+          .map((k) => `- ${k.points}pts ${k.coreValue} from ${k.sender.name}: ${k.description}`)
+          .join('\n'),
+    );
+
+    return {
+      summary:
+        aiSummary ??
+        `This month you received ${kudos.length} kudos (${totalPoints} points). ` +
+          `You were recognized most for ${topValue}.`,
+      ai: !!aiSummary,
+      stats: { count: kudos.length, totalPoints, topValue },
+    };
   }
 }

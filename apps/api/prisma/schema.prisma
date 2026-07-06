@@ -40,6 +40,9 @@ model Kudo {
   description String
   coreValue   String   // #Teamwork, #Ownership...
   createdAt   DateTime @default(now())
+  // pgvector embedding of description (Gemini text-embedding-004, 768 dims);
+  // Unsupported: Prisma cannot read/write it directly — access via raw SQL
+  embedding   Unsupported("vector(768)")?
 
   sender   User        @relation("Sender", fields: [senderId], references: [id])
   receiver User        @relation("Receiver", fields: [receiverId], references: [id])

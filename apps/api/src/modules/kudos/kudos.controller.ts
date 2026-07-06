@@ -34,6 +34,12 @@ export class KudosController {
     return this.kudos.getFeed(query.cursor, query.limit ?? 20);
   }
 
+  @Get('search')
+  search(@Query('q') q?: string) {
+    if (!q?.trim()) return { items: [], semantic: false };
+    return this.kudos.search(q.trim(), 10);
+  }
+
   @Patch(':id')
   update(
     @CurrentUser() user: JwtPayload,

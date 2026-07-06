@@ -23,4 +23,9 @@ export class UsersController {
   getBalance(@CurrentUser() user: JwtPayload) {
     return this.users.getBalance(user.sub);
   }
+
+  @Get('me/monthly-summary')
+  getMonthlySummary(@CurrentUser() user: JwtPayload) {
+    return this.users.getMonthlySummary(user.sub);
+  }
 }
