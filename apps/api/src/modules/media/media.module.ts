@@ -1,5 +1,6 @@
-import { Module } from '@nestjs/common';
+import { Inject, Module, OnApplicationShutdown } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Queue } from 'bullmq';
 import { MulterModule } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname, resolve } from 'node:path';
@@ -36,4 +37,11 @@ import { VIDEO_QUEUE, videoQueueProvider } from './video.queue';
   providers: [MediaService, VideoProcessor, videoQueueProvider],
   exports: [VIDEO_QUEUE],
 })
-export class MediaModule {}
+export class MediaModule implements OnApplicationShutdown {
+  constructor(@Inject(VIDEO_QUEUE) private readonly queue: Queue) {}
+
+  async onApplicationShutdown() {
+    // close the queue's Redis connections so tests/CI can exit cleanly
+    await this.queue.close();
+  }
+}

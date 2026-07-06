@@ -39,6 +39,10 @@ export class VideoProcessor implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit() {
+    // jest e2e boots/tears down many apps; the worker's blocking Redis
+    // read races shutdown and throws after close. The video pipeline has
+    // its own runtime E2E — skip the in-process worker under test.
+    if (process.env.NODE_ENV === 'test') return;
     this.worker = new Worker<VideoJobData>(
       VIDEO_QUEUE_NAME,
       (job) => this.process(job),
@@ -46,6 +50,11 @@ export class VideoProcessor implements OnModuleInit, OnModuleDestroy {
     );
     this.worker.on('failed', (job, err) =>
       this.logger.error(`job ${job?.id} failed: ${err.message}`),
+    );
+    // without an error listener BullMQ re-emits as an unhandled exception
+    // (e.g. the blocking read erroring during shutdown)
+    this.worker.on('error', (err) =>
+      this.logger.warn(`worker error: ${err.message}`),
     );
   }
 

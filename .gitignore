@@ -5,4 +5,4 @@ dist/
 *.log
 coverage/
 uploads/
-.DS_Store
+.DS_Storecoverage-e2e/

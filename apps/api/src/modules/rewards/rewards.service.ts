@@ -43,6 +43,14 @@ export class RewardsService {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
+        // LAYER 2a: a late retry of an already-successful redemption must
+        // return the original one — checked BEFORE the balance, otherwise
+        // a retry after the points were spent would wrongly get a 400.
+        const existing = await tx.redemption.findUnique({
+          where: { idempotencyKey },
+        });
+        if (existing) return existing;
+
         const reward = await tx.reward.findUnique({ where: { id: rewardId } });
         if (!reward || !reward.active) {
           throw new NotFoundException('Reward not found');
@@ -65,8 +73,8 @@ export class RewardsService {
           throw new BadRequestException('Insufficient balance');
         }
 
-        // LAYER 2: unique idempotencyKey — a concurrent/late duplicate
-        // that slipped past Redis throws P2002 here.
+        // LAYER 2b: unique idempotencyKey — a concurrent duplicate that
+        // slipped past Redis and the check above throws P2002 here.
         const redemption = await tx.redemption.create({
           data: { userId, rewardId, cost: reward.cost, idempotencyKey },
         });
