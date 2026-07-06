@@ -5,11 +5,14 @@ import helmet from 'helmet';
 import { resolve } from 'node:path';
 import { AppModule } from './app.module';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
+import { corsOrigin } from './config/cors';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  app.enableCors({ origin: true });
+  app.enableCors({ origin: corsOrigin() });
+
+  app.set('trust proxy', 1);
   app.use(
     helmet({
       // uploads are consumed by the web app on another origin

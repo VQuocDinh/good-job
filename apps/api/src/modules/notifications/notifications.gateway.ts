@@ -14,6 +14,7 @@ import {
 import Redis from 'ioredis';
 import { Server, Socket } from 'socket.io';
 import { JwtPayload } from '../auth/auth.service';
+import { corsOrigin } from '../../config/cors';
 import { REDIS_CLIENT } from '../../redis/redis.constants';
 
 /**
@@ -22,7 +23,7 @@ import { REDIS_CLIENT } from '../../redis/redis.constants';
  * instances: the user's socket may be connected to another instance.
  */
 @Injectable()
-@WebSocketGateway({ cors: { origin: true } })
+@WebSocketGateway({ cors: { origin: corsOrigin() } })
 export class NotificationsGateway
   implements OnGatewayConnection, OnModuleInit, OnModuleDestroy
 {

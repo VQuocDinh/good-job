@@ -36,6 +36,9 @@ COPY --from=build /repo/apps/api/node_modules/prisma apps/api/node_modules/prism
 COPY apps/api/prisma apps/api/prisma
 COPY --from=build /repo/apps/api/dist apps/api/dist
 
+RUN mkdir -p /data/uploads && chown -R node:node /data/uploads /repo
+USER node
+
 WORKDIR /repo/apps/api
 EXPOSE 3000
 # apply pending migrations, then start (idempotent on every boot);

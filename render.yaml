@@ -1,0 +1,68 @@
+# Render Blueprint — deploy the GoodJob API + Postgres (pgvector) + Redis.
+# Deploy: push this to your repo, then on Render → "New +" → "Blueprint" → pick the repo.
+# The web frontend is deployed separately on Vercel (see DEPLOY.md).
+#
+# NOTE ON FREE TIER:
+# - Free web services sleep after ~15 min of inactivity (first request is a cold start).
+# - Free services CANNOT mount a persistent disk, so uploaded media lives on the
+#   container's ephemeral disk and is LOST on every redeploy/restart. That is fine for
+#   a demo. To keep uploads, switch the API `plan` to a paid tier and uncomment the
+#   `disk:` block below (or move uploads to object storage).
+
+databases:
+  - name: goodjob-db
+    databaseName: goodjob
+    user: goodjob
+    plan: free
+    postgresMajorVersion: "16"
+    # pgvector is enabled by the Prisma migration (CREATE EXTENSION vector)
+
+services:
+  # ---- Redis (BullMQ queue + realtime pub/sub) ----
+  - type: redis
+    name: goodjob-redis
+    plan: free
+    ipAllowList: [] # empty = only reachable from Render's private network
+    maxmemoryPolicy: noeviction # required by BullMQ so jobs are never evicted
+
+  # ---- NestJS API (built from the existing Dockerfile) ----
+  - type: web
+    name: goodjob-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: . # build from repo root (Dockerfile copies the workspace)
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: goodjob-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: goodjob-redis
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true # Render generates a strong random secret
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: NODE_ENV
+        value: production
+      - key: UPLOAD_DIR
+        value: /data/uploads
+      - key: MAX_VIDEO_DURATION_SECONDS
+        value: "180"
+      # Set these manually in the Render dashboard (sync:false = not stored in git):
+      - key: WEB_ORIGIN # e.g. https://your-app.vercel.app  (needed for CORS + WebSocket)
+        sync: false
+      - key: ADMIN_EMAILS # e.g. you@example.com
+        sync: false
+      - key: GEMINI_API_KEY # optional; leave unset to disable semantic search
+        sync: false
+    # ---- Uncomment to persist uploads (requires a PAID plan above) ----
+    # disk:
+    #   name: uploads
+    #   mountPath: /data/uploads
+    #   sizeGB: 1
