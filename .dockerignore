@@ -1,0 +1,11 @@
+node_modules
+**/node_modules
+**/dist
+**/coverage
+**/coverage-e2e
+**/uploads
+.env
+.env.local
+*.log
+.git
+GOODJOB_*.md

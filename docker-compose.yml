@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: goodjob
       POSTGRES_DB: goodjob
     ports:
-      - "5433:5432"
+      - "5433:5432" # 5433 on the host to avoid clashing with a local Postgres
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -19,6 +19,49 @@ services:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # NestJS API — the BullMQ video worker runs in-process with the API
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://goodjob:goodjob@db:5432/goodjob
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-alice@goodjob.dev}
+      MAX_VIDEO_DURATION_SECONDS: 180
+      UPLOAD_DIR: /data/uploads
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    volumes:
+      - uploads:/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # what the BROWSER uses to reach the API (host-mapped port)
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
 
 volumes:
   pgdata:
+  uploads:
