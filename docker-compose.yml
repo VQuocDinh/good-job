@@ -37,6 +37,7 @@ services:
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       ADMIN_EMAILS: ${ADMIN_EMAILS:-alice@goodjob.dev}
+      SEED_ON_BOOT: ${SEED_ON_BOOT:-false}
       MAX_VIDEO_DURATION_SECONDS: 180
       UPLOAD_DIR: /data/uploads
       PORT: 3000

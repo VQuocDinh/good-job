@@ -1,9 +1,16 @@
 import * as path from 'node:path';
-import { config as loadEnv } from 'dotenv';
 import { PrismaClient } from '@prisma/client';
 
-// load root .env so this also works when invoked directly via `ts-node prisma/seed.ts`
-loadEnv({ path: path.resolve(__dirname, '../../../.env') });
+// Load root .env so this also works when invoked directly via
+// `ts-node prisma/seed.ts`. dotenv is a devDependency: in the production
+// image it is absent and DATABASE_URL comes from the platform environment.
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { config: loadEnv } = require('dotenv');
+  loadEnv({ path: path.resolve(__dirname, '../../../.env') });
+} catch {
+  // dotenv not installed (production) — rely on real env vars
+}
 
 const prisma = new PrismaClient();
 

@@ -23,6 +23,12 @@ Open **http://localhost:8080** and sign in with a demo account (no password — 
 | `alice@goodjob.dev` | member + admin (manages rewards) |
 | `bob@goodjob.dev`, `carol@goodjob.dev` | members |
 
+> **Deploying to a remote environment?** The API container only runs
+> `prisma migrate deploy` on boot — a fresh database has **no users**, so
+> login returns 401 "Unknown user". Set `SEED_ON_BOOT=true` (idempotent
+> upserts) for the first boot, or run the compiled seed once:
+> `node seed-dist/seed.js` inside the API container.
+
 API runs at http://localhost:3000. For local development instead of containers:
 
 ```bash
